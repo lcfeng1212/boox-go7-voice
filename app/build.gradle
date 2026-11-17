@@ -1,0 +1,28 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'tw.boox.voicepage'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'tw.boox.voicepage'
+        minSdk 28
+        targetSdk 33
+        versionCode 3
+        versionName '0.2.1'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+dependencies {
+    implementation 'net.java.dev.jna:jna:5.18.1@aar'
+    implementation 'com.alphacephei:vosk-android:0.3.75@aar'
+}
+tasks.register('verifyChineseModel') {
+    doLast {
+        if (!file('src/main/assets/model-cn/am/final.mdl').isFile() ||
+            !file('src/main/assets/model-cn/conf/model.conf').isFile())
+            throw new GradleException('請先執行 python3 scripts/prepare_model.py')
+    }
+}
+tasks.named('preBuild').configure { dependsOn 'verifyChineseModel' }

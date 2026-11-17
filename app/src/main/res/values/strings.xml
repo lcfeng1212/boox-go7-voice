@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">BOOX 中文語音翻頁</string>
+  <string name="accessibility_description">只模擬左右滑動翻頁，不讀取螢幕文字。</string>
+</resources>
