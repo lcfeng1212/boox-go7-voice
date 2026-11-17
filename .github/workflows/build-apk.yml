@@ -45,3 +45,38 @@ jobs:
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             model-source.json
+
+  emulator-smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@v4
+        with:
+          name: BOOX-Go7-Chinese-VoicePage-APK
+          path: downloaded-apk
+      - name: Android 13 emulator installation and activity launch
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          script: |
+            set -e
+            APK="$(find downloaded-apk -name app-debug.apk -print -quit)"
+            test -n "$APK"
+            adb install "$APK"
+            adb shell am start -W -n tw.boox.voicepage/.MainActivity
+            sleep 4
+            adb shell pidof tw.boox.voicepage
+            adb shell dumpsys package tw.boox.voicepage | grep -F "OfflineListeningService"
+            adb shell dumpsys package tw.boox.voicepage | grep -F "SwipeAccessibilityService"
+            echo "Android 13 smoke test PASS: APK installed, activity running, services registered"
