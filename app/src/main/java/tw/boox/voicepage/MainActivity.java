@@ -1,0 +1,76 @@
+package tw.boox.voicepage;
+import android.Manifest;
+import android.app.Activity;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.os.*;
+import android.provider.Settings;
+import android.widget.*;
+/** High-contrast, lightweight UI for e-ink devices. */
+public final class MainActivity extends Activity {
+    private static final int MIC_REQUEST=101;
+    private TextView status;
+    private final Handler handler=new Handler(Looper.getMainLooper());
+    private final Runnable refresher=new Runnable(){
+        @Override public void run(){refresh();handler.postDelayed(this,1500);}
+    };
+    @Override public void onCreate(Bundle state){
+        super.onCreate(state);
+        ScrollView scroller=new ScrollView(this);scroller.setFillViewport(true);
+        LinearLayout root=new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(24,24,24,24);
+        root.setBackgroundColor(Color.WHITE);
+        scroller.addView(root);
+        label(root,"BOOX 中文語音翻頁 V0.2.1",24);
+        label(root,"離線中文語音：說「下一頁」、「上一頁」。",18);
+        status=label(root,"狀態載入中",16);
+        button(root,"① 開啟無障礙設定",()->startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        button(root,"② 開始離線聆聽",this::begin);
+        button(root,"停止聆聽",()->{
+            Intent stop=new Intent(this,OfflineListeningService.class).setAction(OfflineListeningService.ACTION_STOP);
+            startService(stop);refresh();
+        });
+        button(root,"測試下一頁（左滑）",()->testSwipe(true));
+        button(root,"測試上一頁（右滑）",()->testSwipe(false));
+        label(root,"先啟用 BOOX 語音翻頁手勢無障礙服務，再開始聆聽並允許麥克風權限。返回閱讀 App 後說下一頁或上一頁。通知列可停止。持續聆聽會增加耗電，BOOX 休眠可能中斷服務。",15);
+        setContentView(scroller);
+    }
+    private TextView label(LinearLayout root,String text,int size){
+        TextView view=new TextView(this);view.setText(text);view.setTextSize(size);
+        view.setTextColor(Color.BLACK);view.setPadding(0,8,0,16);root.addView(view);
+        return view;
+    }
+    private void button(LinearLayout root,String text,Runnable action){
+        Button view=new Button(this);view.setText(text);view.setAllCaps(false);view.setTextSize(18);
+        view.setOnClickListener(v->action.run());
+        root.addView(view,new LinearLayout.LayoutParams(-1,80));
+    }
+    private void begin(){
+        if(!SwipeAccessibilityService.isConnected()){toast("請先啟用無障礙手勢");return;}
+        if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},MIC_REQUEST);return;
+        }
+        Intent start=new Intent(this,OfflineListeningService.class).setAction(OfflineListeningService.ACTION_START);
+        try{if(Build.VERSION.SDK_INT>=26)startForegroundService(start);else startService(start);}
+        catch(RuntimeException e){toast("啟動失敗："+e.getClass().getSimpleName());}
+    }
+    @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] results){
+        super.onRequestPermissionsResult(code,permissions,results);
+        if(code==MIC_REQUEST){
+            if(results.length>0&&results[0]==PackageManager.PERMISSION_GRANTED)begin();
+            else toast("尚未授予麥克風權限");
+        }
+    }
+    @Override protected void onResume(){super.onResume();handler.removeCallbacks(refresher);handler.post(refresher);}
+    @Override protected void onPause(){handler.removeCallbacks(refresher);super.onPause();}
+    private void refresh(){
+        if(status==null)return;
+        String detail=getSharedPreferences("state",MODE_PRIVATE).getString("status","尚未開始");
+        status.setText("無障礙："+(SwipeAccessibilityService.isConnected()?"已啟用":"未啟用")+
+           "\n麥克風："+(OfflineListeningService.running?"運作中":"未執行")+"\n狀態："+detail);
+    }
+    private void testSwipe(boolean next){toast(SwipeAccessibilityService.swipe(next)?"已送出手勢":"手勢未送出，請確認設定");}
+    private void toast(String text){Toast.makeText(this,text,Toast.LENGTH_LONG).show();}
+}
