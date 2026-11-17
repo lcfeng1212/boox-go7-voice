@@ -1,0 +1,1 @@
+# boox-go7-voice
