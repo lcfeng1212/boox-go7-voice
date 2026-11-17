@@ -69,14 +69,4 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
-          script: |
-            set -e
-            APK="$(find downloaded-apk -name app-debug.apk -print -quit)"
-            test -n "$APK"
-            adb install "$APK"
-            adb shell am start -W -n tw.boox.voicepage/.MainActivity
-            sleep 4
-            adb shell pidof tw.boox.voicepage
-            adb shell dumpsys package tw.boox.voicepage | grep -F "OfflineListeningService"
-            adb shell dumpsys package tw.boox.voicepage | grep -F "SwipeAccessibilityService"
-            echo "Android 13 smoke test PASS: APK installed, activity running, services registered"
+          script: bash scripts/emulator_smoke.sh
