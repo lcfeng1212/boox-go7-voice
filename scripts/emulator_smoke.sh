@@ -12,6 +12,12 @@ adb install -r "$APK"
 adb shell am start -W -n "$PKG/.MainActivity"
 sleep 4
 adb shell pidof "$PKG"
-adb shell dumpsys package "$PKG" | grep -F "OfflineListeningService"
-adb shell dumpsys package "$PKG" | grep -F "SwipeAccessibilityService"
+# Non-exported services without intent filters are not listed by `dumpsys package`,
+# so verify service declarations from the APK manifest instead.
+AAPT2="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -name aapt2 -type f | sort -V | tail -n1)"
+MANIFEST="$("$AAPT2" dump xmltree --file AndroidManifest.xml "$APK")"
+grep -F "tw.boox.voicepage.OfflineListeningService" <<<"$MANIFEST"
+grep -F "tw.boox.voicepage.SwipeAccessibilityService" <<<"$MANIFEST"
+# Accessibility service has an intent filter, so it must be registered on the device.
+adb shell dumpsys package "$PKG" | grep -F "SwipeAccessibilityService" >/dev/null
 echo "Android 13 smoke test PASS: APK installed, activity running, services registered"
