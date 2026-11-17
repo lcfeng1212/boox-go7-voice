@@ -2,6 +2,7 @@ package tw.boox.voicepage;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.*;
@@ -23,9 +24,18 @@ public final class MainActivity extends Activity {
         root.setPadding(24,24,24,24);
         root.setBackgroundColor(Color.WHITE);
         scroller.addView(root);
-        label(root,"BOOX 中文語音翻頁 V0.2.1",24);
+        label(root,"BOOX 中文語音翻頁 V"+versionName(),24);
         label(root,"離線中文語音：說「下一頁」、「上一頁」。",18);
         status=label(root,"狀態載入中",16);
+        CheckBox grammar=new CheckBox(this);
+        grammar.setText("限定指令模式（建議：較準、較省電、反應較快）");
+        grammar.setTextSize(16);grammar.setTextColor(Color.BLACK);
+        grammar.setChecked(prefs().getBoolean(OfflineListeningService.PREF_GRAMMAR,true));
+        grammar.setOnCheckedChangeListener((v,checked)->{
+            prefs().edit().putBoolean(OfflineListeningService.PREF_GRAMMAR,checked).apply();
+            if(OfflineListeningService.running)toast("已儲存，請按「停止聆聽」再重新開始才會生效");
+        });
+        root.addView(grammar);
         button(root,"① 開啟無障礙設定",()->startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         button(root,"② 開始離線聆聽",this::begin);
         button(root,"停止聆聽",()->{
@@ -34,7 +44,8 @@ public final class MainActivity extends Activity {
         });
         button(root,"測試下一頁（左滑）",()->testSwipe(true));
         button(root,"測試上一頁（右滑）",()->testSwipe(false));
-        label(root,"先啟用 BOOX 語音翻頁手勢無障礙服務，再開始聆聽並允許麥克風權限。返回閱讀 App 後說下一頁或上一頁。通知列可停止。持續聆聽會增加耗電，BOOX 休眠可能中斷服務。",15);
+        label(root,"可用指令：下一頁、下頁、翻頁、翻下一頁、往下翻；上一頁、上頁、翻上一頁、往上翻。",15);
+        label(root,"先啟用 BOOX 語音翻頁手勢無障礙服務，再開始聆聽並允許麥克風權限。返回閱讀 App 後說下一頁或上一頁。通知列可停止。持續聆聽會增加耗電，BOOX 休眠可能中斷服務。若限定指令模式誤判或聽不到，可取消勾選改用一般模式比較。",15);
         setContentView(scroller);
     }
     private TextView label(LinearLayout root,String text,int size){
@@ -67,9 +78,16 @@ public final class MainActivity extends Activity {
     @Override protected void onPause(){handler.removeCallbacks(refresher);super.onPause();}
     private void refresh(){
         if(status==null)return;
-        String detail=getSharedPreferences("state",MODE_PRIVATE).getString("status","尚未開始");
-        status.setText("無障礙："+(SwipeAccessibilityService.isConnected()?"已啟用":"未啟用")+
-           "\n麥克風："+(OfflineListeningService.running?"運作中":"未執行")+"\n狀態："+detail);
+        String detail=prefs().getString("status","尚未開始");
+        String text="無障礙："+(SwipeAccessibilityService.isConnected()?"已啟用":"未啟用")+
+           "\n麥克風："+(OfflineListeningService.running?"運作中":"未執行")+"\n狀態："+detail;
+        // Only redraw when the text changes: every redraw costs an e-ink refresh.
+        if(!text.contentEquals(status.getText()))status.setText(text);
+    }
+    private SharedPreferences prefs(){return getSharedPreferences("state",MODE_PRIVATE);}
+    private String versionName(){
+        try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}
+        catch(PackageManager.NameNotFoundException e){return "?";}
     }
     private void testSwipe(boolean next){toast(SwipeAccessibilityService.swipe(next)?"已送出手勢":"手勢未送出，請確認設定");}
     private void toast(String text){Toast.makeText(this,text,Toast.LENGTH_LONG).show();}

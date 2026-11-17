@@ -13,6 +13,14 @@ public final class VoicePageTests {
         check(CommandEngine.parse("下一頁下一頁")==0);
         check(CommandEngine.parse("")==0);
         check(CommandEngine.parse(null)==0);
+        check(CommandEngine.parse("小书 上 一页")==-1);
+        check(CommandEngine.parse("小书 下一页")==1);
+        check(CommandEngine.parse("翻页")==1);
+        check(CommandEngine.parse("[unk] 下一页")==1);
+        check(CommandEngine.parse("[unk]")==0);
+        for(String phrase:CommandEngine.GRAMMAR_PHRASES)
+            check(phrase.equals("[unk]")||CommandEngine.parse(phrase)!=0);
+        check(CommandEngine.grammarJson().startsWith("[\"下一页\",")&&CommandEngine.grammarJson().endsWith("\"[unk]\"]"));
         CommandEngine c=new CommandEngine(900);
         check(c.accept("下一頁",1000)==1);
         check(c.accept("下一頁",1001)==0);

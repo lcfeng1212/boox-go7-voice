@@ -15,6 +15,7 @@ import java.io.File;
 public final class OfflineListeningService extends Service {
     public static final String ACTION_START="tw.boox.voicepage.START_OFFLINE";
     public static final String ACTION_STOP="tw.boox.voicepage.STOP_OFFLINE";
+    public static final String PREF_GRAMMAR="grammar_mode";
     public static volatile boolean running=false;
     private static final String CHANNEL="offline_chinese_voice";
     private static final int NOTICE=4072;
@@ -68,40 +69,63 @@ public final class OfflineListeningService extends Service {
     private void begin(int ticket){
         if(!running||ticket!=session||model==null)return;
         try {
-            recognizer=new Recognizer(model,RATE);
+            boolean grammar=getSharedPreferences("state",MODE_PRIVATE).getBoolean(PREF_GRAMMAR,true);
+            if(grammar){
+                // Restricting decoding to the command phrases is faster, uses less CPU and
+                // avoids matching unrelated speech; fall back to the full model if it fails.
+                try{recognizer=new Recognizer(model,RATE,CommandEngine.grammarJson());}
+                catch(Exception ex){Log.w("BOOXVoice","grammar recognizer",ex);grammar=false;}
+            }
+            if(recognizer==null)recognizer=new Recognizer(model,RATE);
             speech=new SpeechService(recognizer,RATE);
-            if(!speech.startListening(new Receiver(ticket)))throw new IllegalStateException("startListening false");
+            if(!speech.startListening(new Receiver(ticket,grammar)))throw new IllegalStateException("startListening false");
             hadCallback=false;
             health.started(SystemClock.elapsedRealtime());
             scheduleHealth(ticket);
-            update("離線聆聽中：下一頁／上一頁");
+            update((grammar?"離線聆聽中（限定指令）":"離線聆聽中（一般模式）")+"：下一頁／上一頁");
         }catch(Exception ex){update("收音啟動失敗："+ex.getClass().getSimpleName());retry(ticket);}
     }
     private final class Receiver implements RecognitionListener {
         private final int ticket;
-        Receiver(int ticket){this.ticket=ticket;}
+        /** In grammar mode partial hypotheses are stable enough to act on before end-of-speech. */
+        private final boolean actOnPartial;
+        private boolean firedThisUtterance;
+        Receiver(int ticket,boolean actOnPartial){this.ticket=ticket;this.actOnPartial=actOnPartial;}
         private boolean current(){return running&&ticket==session;}
         @Override public void onResult(String result){
             if(!current())return;
             heartbeat();
-            String heard="";
-            try{heard=new JSONObject(result).optString("text","");}
-            catch(JSONException ignored){}
+            if(firedThisUtterance){firedThisUtterance=false;return;}
+            handle(field(result,"text"));
+        }
+        @Override public void onPartialResult(String result){
+            if(!current())return;
+            heartbeat();
+            if(!actOnPartial||firedThisUtterance)return;
+            String partial=field(result,"partial");
+            if(CommandEngine.parse(partial)!=CommandEngine.NONE&&handle(partial))firedThisUtterance=true;
+        }
+        private boolean handle(String heard){
             final int command=commands.accept(heard,SystemClock.elapsedRealtime());
-            if(command!=CommandEngine.NONE)main.post(()->{
+            if(command==CommandEngine.NONE)return false;
+            main.post(()->{
                 if(!current())return;
                 boolean next=command==CommandEngine.NEXT;
                 boolean ok=SwipeAccessibilityService.swipe(next);
                 update((next?"下一頁":"上一頁")+(ok?"：已送出手勢":"：無障礙手勢未成功"));
             });
+            return true;
         }
-        @Override public void onPartialResult(String result){if(current())heartbeat();}
         @Override public void onFinalResult(String result){}
         @Override public void onTimeout(){if(current())main.post(()->retry(ticket));}
         @Override public void onError(Exception ex){
             Log.w("BOOXVoice","Recognition error",ex);
             if(current())main.post(()->retry(ticket));
         }
+    }
+    private static String field(String json,String name){
+        try{return new JSONObject(json).optString(name,"");}
+        catch(JSONException ignored){return "";}
     }
     private void heartbeat(){
         health.heartbeat(SystemClock.elapsedRealtime());
