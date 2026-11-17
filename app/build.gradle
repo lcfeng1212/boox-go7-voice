@@ -11,6 +11,16 @@ android {
         // BOOX Go 7 (Snapdragon 690) is arm64; x86_64 is kept only for the CI emulator test.
         ndk { abiFilters 'arm64-v8a', 'x86_64' }
     }
+    // Fixed debug key: CI runners otherwise generate a new key per run, and Android refuses to
+    // update an installed APK signed with a different key. Personal sideload use only.
+    signingConfigs {
+        debug {
+            storeFile rootProject.file('keystore/debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17

@@ -41,21 +41,28 @@
 
 ## 下載 APK
 
-1. 打開本儲存庫的 **Actions** 分頁 → **BOOX Android APK build**。
-2. 點最新一筆綠色勾勾（成功）的執行紀錄。
-3. 在頁面最下方的 **Artifacts** 下載 `BOOX-Go7-Chinese-VoicePage-APK`（ZIP 檔，需登入 GitHub）。
-4. 解壓縮後取得 `app-debug.apk`。
+**最簡單：在 Go 7 的瀏覽器直接下載（不用登入、不用解壓縮）**
 
-> Artifacts 有保存期限，過期後要重新觸發一次編譯：Actions → BOOX Android APK build → Run workflow。
+https://github.com/lcfeng1212/boox-go7-voice/releases/download/latest/BOOX-Go7-VoicePage.apk
+
+也可以打開本儲存庫首頁，點右側 **Releases** 裡的最新版本，再點 `BOOX-Go7-VoicePage.apk`。每次 `main` 編譯並通過測試後，這個連結都會自動更新成最新版。
+
+**備用：從 Actions 下載**
+
+Actions → BOOX Android APK build → 最新一筆成功紀錄 → 頁面最下方 Artifacts → `BOOX-Go7-Chinese-VoicePage-APK`（需登入 GitHub，下載後是 ZIP，要先解壓縮）。
 
 ## 安裝與首次設定
 
-1. **安裝 APK**：把 `app-debug.apk` 複製到 BOOX Go 7，點開安裝；系統詢問時允許「安裝未知來源 App」。
+1. **安裝 APK**：在 Go 7 上點開下載好的 APK。系統詢問時，允許瀏覽器「安裝未知應用程式」，返回後按「安裝」。若出現 Play 安全防護警告，點「更多詳細資料 → 仍要安裝」。
 2. **啟用無障礙服務**：開啟本 App，按「① 開啟無障礙設定」，找到「BOOX 語音翻頁手勢」並啟用。
    - Android 13 若顯示「**受限制的設定**」而無法啟用：到「設定 → 應用程式 → BOOX 中文語音翻頁」的 App 資訊頁，點右上角選單「允許受限制的設定」，再回來啟用。
 3. **開始聆聽**：回到本 App，按「② 開始離線聆聽」，允許麥克風權限。第一次會先解壓語音模型，狀態顯示「正在載入離線中文模型」，需要稍等。
 4. **確認狀態**：App 畫面顯示「無障礙：已啟用」、「麥克風：運作中」，狀態為「離線聆聽中」，即設定完成。
 5. **BOOX 背景設定**：在 BOOX 的 App 最佳化設定中，允許本 App 背景執行、不要凍結，否則鎖屏或切換 App 後可能被系統停止。
+
+### 更新版本
+
+用同一個連結下載新版 APK，直接安裝覆蓋即可，設定會保留。0.3.0 起所有版本使用固定簽章；若手上是更早的版本，第一次更新會出現「應用程式未安裝」，請先解除安裝舊版再安裝。
 
 ## 使用方式
 
