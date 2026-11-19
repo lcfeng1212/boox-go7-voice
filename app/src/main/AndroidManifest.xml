@@ -12,6 +12,10 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Invisible trampoline for the floating ball: mic services may only start while visible. -->
+        <activity android:name=".StartListeningActivity" android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:taskAffinity="" android:excludeFromRecents="true" android:noHistory="true"/>
         <service android:name=".OfflineListeningService" android:exported="false"
             android:foregroundServiceType="microphone"/>
         <service android:name=".SwipeAccessibilityService" android:exported="true"

@@ -6,6 +6,7 @@ trap 'rm -rf "$out"' EXIT
 javac -encoding UTF-8 -d "$out" \
   app/src/main/java/tw/boox/voicepage/CommandEngine.java \
   app/src/main/java/tw/boox/voicepage/GestureGeometry.java \
+  app/src/main/java/tw/boox/voicepage/BallLayout.java \
   app/src/main/java/tw/boox/voicepage/ListeningHealth.java \
   app/src/main/java/tw/boox/voicepage/RestartPolicy.java \
   tests/VoicePageTests.java tests/GrammarDump.java

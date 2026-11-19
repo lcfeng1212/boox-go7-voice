@@ -17,6 +17,9 @@ public final class OfflineListeningService extends Service {
     public static final String ACTION_STOP="tw.boox.voicepage.STOP_OFFLINE";
     public static final String PREF_GRAMMAR="grammar_mode";
     public static volatile boolean running=false;
+    /** True once the recognizer is actually listening (false while the model loads or restarts). */
+    public static volatile boolean ready=false;
+    private static volatile OfflineListeningService instance;
     private static final String CHANNEL="offline_chinese_voice";
     private static final int NOTICE=4072;
     private static final float RATE=16000f;
@@ -30,7 +33,13 @@ public final class OfflineListeningService extends Service {
     private Runnable pendingRetry, healthCheck;
     private int session=0;
     private boolean hadCallback;
-    @Override public void onCreate(){super.onCreate();notificationChannel();}
+    @Override public void onCreate(){super.onCreate();instance=this;notificationChannel();}
+    /** Stops listening from the floating ball without going through the background-start rules. */
+    static void stopFromUi(){
+        OfflineListeningService s=instance;
+        if(s!=null)s.main.post(s::stopNow);
+        else{running=false;ready=false;SwipeAccessibilityService.listeningStateChanged();}
+    }
     @Override public int onStartCommand(Intent intent,int flags,int id){
         String action=intent==null?"":intent.getAction();
         if(ACTION_STOP.equals(action)){stopNow();return START_NOT_STICKY;}
@@ -80,6 +89,7 @@ public final class OfflineListeningService extends Service {
             speech=new SpeechService(recognizer,RATE);
             if(!speech.startListening(new Receiver(ticket,grammar)))throw new IllegalStateException("startListening false");
             hadCallback=false;
+            ready=true;
             health.started(SystemClock.elapsedRealtime());
             scheduleHealth(ticket);
             update((grammar?"離線聆聽中（限定指令）":"離線聆聽中（一般模式）")+"：下一頁／上一頁");
@@ -158,6 +168,7 @@ public final class OfflineListeningService extends Service {
         healthCheck=null;
     }
     private void closeSpeech(){
+        ready=false;
         if(speech!=null){
             try{speech.cancel();}catch(Exception e){Log.w("BOOXVoice","cancel",e);}
             try{speech.shutdown();}catch(Exception e){Log.w("BOOXVoice","shutdown",e);}
@@ -180,6 +191,8 @@ public final class OfflineListeningService extends Service {
     }
     private void update(String s){
         getSharedPreferences("state",MODE_PRIVATE).edit().putString("status",s).apply();
+        Log.i("BOOXVoice","status: "+s);
+        SwipeAccessibilityService.listeningStateChanged();
     }
     private void notificationChannel(){
         if(Build.VERSION.SDK_INT>=26){
@@ -207,6 +220,8 @@ public final class OfflineListeningService extends Service {
         if(pendingRetry!=null)main.removeCallbacks(pendingRetry);
         clearHealth();closeSpeech();
         if(model!=null){try{model.close();}catch(Exception ignored){}model=null;}
+        if(instance==this)instance=null;
+        SwipeAccessibilityService.listeningStateChanged();
         super.onDestroy();
     }
     @Override public IBinder onBind(Intent intent){return null;}

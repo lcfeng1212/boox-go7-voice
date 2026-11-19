@@ -36,6 +36,16 @@ public final class MainActivity extends Activity {
             if(OfflineListeningService.running)toast("已儲存，請按「停止聆聽」再重新開始才會生效");
         });
         root.addView(grammar);
+        CheckBox ball=new CheckBox(this);
+        ball.setText("顯示浮球（點一下開／關聆聽；拖到左右邊緣收起；長按 5 秒開啟本 App）");
+        ball.setTextSize(16);ball.setTextColor(Color.BLACK);
+        ball.setChecked(prefs().getBoolean(FloatingBall.PREF_SHOW,true));
+        ball.setOnCheckedChangeListener((v,checked)->{
+            prefs().edit().putBoolean(FloatingBall.PREF_SHOW,checked).apply();
+            SwipeAccessibilityService.ballSettingChanged();
+            if(checked&&!SwipeAccessibilityService.isConnected())toast("浮球需要先啟用無障礙手勢服務");
+        });
+        root.addView(ball);
         button(root,"① 開啟無障礙設定",()->startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         button(root,"② 開始離線聆聽",this::begin);
         button(root,"停止聆聽",()->{
