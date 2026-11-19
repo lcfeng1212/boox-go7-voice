@@ -57,7 +57,9 @@ fail(){
 
 adb shell pm grant "$PKG" android.permission.RECORD_AUDIO
 adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS || true
-adb shell am force-stop "$PKG"
+# No `am force-stop` here: Android removes a force-stopped app from the enabled accessibility
+# services, and after an update that broadcast can arrive seconds later, after we enable it.
+adb shell am wait-for-broadcast-idle >/dev/null 2>&1 || sleep 10
 adb logcat -c
 adb shell settings put secure enabled_accessibility_services "$PKG/$PKG.SwipeAccessibilityService"
 adb shell settings put secure accessibility_enabled 1
@@ -90,7 +92,6 @@ for i in $(seq 1 90); do
 done
 adb logcat -d -s BOOXVoice:I | grep "status:" | tail -n3 || true
 if status_seen "離線聆聽中"; then
-  echo "a11y before sleep: $(adb shell settings get secure enabled_accessibility_services)"
   adb shell input keyevent KEYCODE_SLEEP
   for i in $(seq 1 10); do status_seen "已暫停聆聽" && break; sleep 1; done
   status_seen "已暫停聆聽" || fail "screen off did not pause listening"
@@ -98,8 +99,6 @@ if status_seen "離線聆聽中"; then
   adb shell wm dismiss-keyguard || true
   for i in $(seq 1 20); do status_seen "離線聆聽中" && break; sleep 1; done
   status_seen "離線聆聽中" || fail "unlock did not resume listening"
-  sleep 3
-  echo "a11y after unlock: $(adb shell settings get secure enabled_accessibility_services)"
 
   service_running || fail "service stopped during pause/resume"
   echo "screen-off pause / unlock resume PASS"
@@ -135,4 +134,6 @@ C="$(ball_center)"; adb shell input tap "${C%,*}" "${C#*,}"
 sleep 1
 last_ball_log | grep -q "tucked=false" || fail "tap on tucked ball did not expand it"
 service_running && fail "tapping the tucked ball must not start listening"
+adb shell settings get secure enabled_accessibility_services | grep -q "$PKG" \
+  || fail "accessibility service was turned off during the test"
 echo "Floating ball smoke test PASS: toggle from background, long press, tuck and expand"
