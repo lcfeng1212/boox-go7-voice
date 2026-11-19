@@ -12,6 +12,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    outputs:
+      official: ${{ steps.sign.outputs.official }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -42,22 +44,27 @@ jobs:
         run: python3 scripts/prepare_model.py
       - name: Check grammar words exist in model vocabulary
         run: bash tests/run_tests.sh app/src/main/assets/model-cn
-      - name: Build debug APK
-        run: gradle --no-daemon --stacktrace assembleDebug
+        env:
+          PROBE_WORDS: 左滑 右滑 左 右 滑 回到首页 回到 首页 回 到 关闭 关 闭 下 上
+      - name: Build release APK (unsigned)
+        run: gradle --no-daemon --stacktrace assembleRelease
+      - name: Sign APK (key rotation to private release key)
+        id: sign
+        env:
+          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+        run: bash scripts/sign_apk.sh app/build/outputs/apk/release/app-release-unsigned.apk BOOX-Go7-VoicePage.apk
       - name: Verify APK and model provenance
         run: |
-          ls -lh app/build/outputs/apk/debug/app-debug.apk
-          sha256sum app/build/outputs/apk/debug/app-debug.apk
+          ls -lh BOOX-Go7-VoicePage.apk
+          sha256sum BOOX-Go7-VoicePage.apk
           cat model-source.json
-          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep 'assets/model-cn/am/final.mdl'
-          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep 'lib/arm64-v8a/libvosk.so'
-      - name: Show APK signing certificate
-        run: |
-          "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools/35.0.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | grep -E "SHA-256|DN"
+          unzip -l BOOX-Go7-VoicePage.apk | grep 'assets/model-cn/am/final.mdl'
+          unzip -l BOOX-Go7-VoicePage.apk | grep 'lib/arm64-v8a/libvosk.so'
       - name: Verify APK permissions (no network access)
         run: |
           AAPT2="${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools/35.0.0/aapt2"
-          "$AAPT2" dump permissions app/build/outputs/apk/debug/app-debug.apk | tee permissions.txt
+          "$AAPT2" dump permissions BOOX-Go7-VoicePage.apk | tee permissions.txt
           if grep -F "android.permission.INTERNET" permissions.txt; then
             echo "::error::APK must not request INTERNET permission"; exit 1
           fi
@@ -67,7 +74,7 @@ jobs:
           name: BOOX-Go7-Chinese-VoicePage-APK
           if-no-files-found: error
           path: |
-            app/build/outputs/apk/debug/app-debug.apk
+            BOOX-Go7-VoicePage.apk
             model-source.json
 
   emulator-smoke:
@@ -103,8 +110,9 @@ jobs:
 
   # Publish the tested APK as a fixed-URL download (no GitHub login, no ZIP) for the e-reader.
   release:
-    needs: emulator-smoke
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build, emulator-smoke]
+    # Only officially signed builds are published (needs the RELEASE_KEYSTORE_* secrets).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build.outputs.official == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -119,7 +127,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="$(sed -n "s/.*versionName '\(.*\)'.*/\1/p" app/build.gradle)"
-          cp "$(find downloaded-apk -name app-debug.apk -print -quit)" BOOX-Go7-VoicePage.apk
+          cp "$(find downloaded-apk -name BOOX-Go7-VoicePage.apk -print -quit)" BOOX-Go7-VoicePage.apk
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest BOOX-Go7-VoicePage.apk --target "$GITHUB_SHA" --latest \
             --title "BOOX Go 7 中文語音翻頁 v$VERSION" \

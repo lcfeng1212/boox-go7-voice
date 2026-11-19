@@ -6,6 +6,7 @@ voice command impossible to recognise. The small Chinese model has no words.txt;
 symbols are embedded in graph/Gr.fst as OpenFST SymbolTable entries (int32 length + UTF-8).
 Usage: java ... GrammarDump | python3 scripts/check_grammar_vocab.py app/src/main/assets/model-cn
 """
+import os
 import pathlib
 import struct
 import sys
@@ -16,7 +17,12 @@ def main():
     tokens = sorted({t for line in sys.stdin for t in line.split()})
     if not tokens:
         sys.exit("no grammar tokens received")
-    missing = [t for t in tokens if data.find(struct.pack("<i", len(t.encode())) + t.encode()) < 0]
+    def known(word):
+        return data.find(struct.pack("<i", len(word.encode())) + word.encode()) >= 0
+    missing = [t for t in tokens if not known(t)]
+    # Optional non-fatal probe, e.g. PROBE_WORDS="左滑 左 滑", to find how the model splits a phrase.
+    for w in os.environ.get("PROBE_WORDS", "").split():
+        print("probe   %-8s %s" % (w, "in vocabulary" if known(w) else "missing"))
     for t in tokens:
         print(("MISSING " if t in missing else "ok      ") + t)
     if missing:

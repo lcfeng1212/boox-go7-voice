@@ -6,13 +6,13 @@ android {
         applicationId 'tw.boox.voicepage'
         minSdk 28
         targetSdk 33
-        versionCode 5
-        versionName '0.4.0'
+        versionCode 6
+        versionName '0.5.0'
         // BOOX Go 7 (Snapdragon 690) is arm64; x86_64 is kept only for the CI emulator test.
         ndk { abiFilters 'arm64-v8a', 'x86_64' }
     }
-    // Fixed debug key: CI runners otherwise generate a new key per run, and Android refuses to
-    // update an installed APK signed with a different key. Personal sideload use only.
+    // Fixed debug key for local debug builds. Published APKs are release builds signed in CI by
+    // scripts/sign_apk.sh, which rotates from this public key to the private release key.
     signingConfigs {
         debug {
             storeFile rootProject.file('keystore/debug.keystore')
@@ -20,6 +20,14 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+    }
+    buildTypes {
+        // Unsigned here; CI signs it (see scripts/sign_apk.sh).
+        release { minifyEnabled false }
+    }
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

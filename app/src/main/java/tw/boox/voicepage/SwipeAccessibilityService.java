@@ -11,14 +11,21 @@ import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 /** Gesture-only accessibility service. Never extracts text from other apps. Hosts the floating ball. */
 public final class SwipeAccessibilityService extends AccessibilityService {
+    public static final String PREF_TURN_MODE="turn_mode";
     private static volatile SwipeAccessibilityService connected;
     private static final Handler MAIN=new Handler(Looper.getMainLooper());
     private long lastGestureAt=-10000L;
     private FloatingBall ball;
     public static boolean isConnected(){return connected!=null;}
+    /** Turns the page with the gesture chosen in settings (swipe left/right, tap sides, swipe up/down). */
     public static boolean swipe(boolean next) {
         SwipeAccessibilityService s=connected;
         return s!=null && s.performSwipe(next);
+    }
+    /** Leaves the current app for the home screen. */
+    public static boolean goHome(){
+        SwipeAccessibilityService s=connected;
+        return s!=null && s.performGlobalAction(GLOBAL_ACTION_HOME);
     }
     /** Called when listening starts, stops or finishes loading, so the ball shows the right state. */
     public static void listeningStateChanged(){
@@ -64,11 +71,13 @@ public final class SwipeAccessibilityService extends AccessibilityService {
         if(manager==null)return false;
         Point screen=new Point();
         manager.getDefaultDisplay().getRealSize(screen);
-        float[] xy=GestureGeometry.coordinates(screen.x,screen.y,next,ball==null?null:ball.bounds());
+        int mode=getSharedPreferences("state",MODE_PRIVATE).getInt(PREF_TURN_MODE,GestureGeometry.SWIPE_HORIZONTAL);
+        float[] g=GestureGeometry.plan(screen.x,screen.y,mode,next,ball==null?null:ball.bounds());
         Path path=new Path();
-        path.moveTo(xy[0],xy[1]);path.lineTo(xy[2],xy[3]);
+        path.moveTo(g[0],g[1]);
+        if(g[0]!=g[2]||g[1]!=g[3])path.lineTo(g[2],g[3]);
         GestureDescription gesture=new GestureDescription.Builder()
-            .addStroke(new GestureDescription.StrokeDescription(path,0,260)).build();
+            .addStroke(new GestureDescription.StrokeDescription(path,0,(long)g[4])).build();
         try {
             boolean accepted=dispatchGesture(gesture,null,new Handler(Looper.getMainLooper()));
             if(accepted)lastGestureAt=now;

@@ -19,7 +19,8 @@ import android.view.WindowManager;
 /**
  * Floating microphone ball drawn as an accessibility overlay (no "draw over other apps" permission).
  * Tap: start/stop listening. Drag to a side edge: tuck away; tap the tucked ball to show it again.
- * Hold 5 seconds: open the app. Black = listening, grey = loading, white = off.
+ * Hold 5 seconds: open the app. Black = listening, grey = loading/paused, white = off,
+ * white with 「重試」 = stopped after repeated microphone failures (tap to retry).
  */
 final class FloatingBall {
     static final String PREF_SHOW="show_ball";
@@ -33,6 +34,8 @@ final class FloatingBall {
     private final BallView view;
     private final WindowManager.LayoutParams params;
     private boolean attached, tucked;
+    private static final int OFF=0, LOADING=1, LISTENING=2, RETRY=3;
+    private int drawnState=-1;
     private int side=BallLayout.RIGHT;
 
     FloatingBall(Context context){
@@ -69,7 +72,15 @@ final class FloatingBall {
         try{windows.removeViewImmediate(view);}catch(RuntimeException e){Log.w(TAG,"removeView",e);}
         attached=false;
     }
-    void refresh(){view.invalidate();}
+    /** Redraws only when the look changes: every redraw costs an e-ink refresh. */
+    void refresh(){
+        int state=state();
+        if(state!=drawnState)view.invalidate();
+    }
+    private static int state(){
+        if(OfflineListeningService.running)return OfflineListeningService.ready?LISTENING:LOADING;
+        return OfflineListeningService.gaveUp?RETRY:OFF;
+    }
     /** Re-fit after rotation or screen size change. */
     void onScreenChanged(){
         if(!attached)return;
@@ -201,9 +212,10 @@ final class FloatingBall {
             setContentDescription("語音翻頁浮球");
         }
         @Override protected void onDraw(Canvas canvas){
-            boolean on=OfflineListeningService.running, ready=OfflineListeningService.ready;
-            int bg=on?(ready?Color.BLACK:Color.rgb(128,128,128)):Color.WHITE;
-            int fg=on?Color.WHITE:Color.BLACK;
+            int state=state();
+            drawnState=state;
+            int bg=state==LISTENING?Color.BLACK:state==LOADING?Color.rgb(128,128,128):Color.WHITE;
+            int fg=state==LISTENING||state==LOADING?Color.WHITE:Color.BLACK;
             float s=size, r=s/2f;
             // When tucked, the circle extends past the window edge facing the screen border.
             float cx=tucked?(side==BallLayout.LEFT?getWidth()-r:r):r, cy=getHeight()/2f;
@@ -213,6 +225,14 @@ final class FloatingBall {
             stroke.setColor(Color.BLACK);stroke.setStrokeWidth(border);
             canvas.drawCircle(cx,cy,r-border/2f,stroke);
             if(tucked)return;
+            if(state==RETRY){
+                fill.setColor(Color.BLACK);
+                fill.setTextSize(s*.30f);
+                fill.setTextAlign(Paint.Align.CENTER);
+                fill.setFakeBoldText(true);
+                canvas.drawText("重試",cx,cy-(fill.descent()+fill.ascent())/2f,fill);
+                return;
+            }
             // Microphone: capsule, cradle arc, stem and base.
             fill.setColor(fg);
             rect.set(cx-s*.10f,cy-s*.25f,cx+s*.10f,cy+s*.05f);

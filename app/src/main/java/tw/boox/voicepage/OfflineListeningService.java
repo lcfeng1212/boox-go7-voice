@@ -11,14 +11,22 @@ import org.vosk.Recognizer;
 import org.vosk.android.RecognitionListener;
 import org.vosk.android.SpeechService;
 import java.io.File;
-/** Foreground offline microphone recognizer; no INTERNET permission. */
+/**
+ * Foreground offline microphone recognizer; no INTERNET permission.
+ * Pauses the microphone while the screen is off and resumes after unlock (model stays loaded).
+ * Gives up after RestartPolicy.MAX_FAILURES consecutive microphone failures.
+ */
 public final class OfflineListeningService extends Service {
     public static final String ACTION_START="tw.boox.voicepage.START_OFFLINE";
     public static final String ACTION_STOP="tw.boox.voicepage.STOP_OFFLINE";
     public static final String PREF_GRAMMAR="grammar_mode";
     public static volatile boolean running=false;
-    /** True once the recognizer is actually listening (false while the model loads or restarts). */
+    /** True once the recognizer is actually listening (false while loading, restarting or paused). */
     public static volatile boolean ready=false;
+    /** True while the microphone is paused because the screen is off. */
+    public static volatile boolean paused=false;
+    /** True after listening stopped because the microphone kept failing; the ball offers a retry. */
+    public static volatile boolean gaveUp=false;
     private static volatile OfflineListeningService instance;
     private static final String CHANNEL="offline_chinese_voice";
     private static final int NOTICE=4072;
@@ -31,18 +39,23 @@ public final class OfflineListeningService extends Service {
     private Recognizer recognizer;
     private SpeechService speech;
     private Runnable pendingRetry, healthCheck;
+    /** Changes on every start/stop: invalidates a model load from an earlier run. */
+    private int runId=0;
+    /** Changes on every recognizer (re)start, pause and stop: invalidates stale callbacks. */
     private int session=0;
     private boolean hadCallback;
+    private BroadcastReceiver screenReceiver;
+
     @Override public void onCreate(){super.onCreate();instance=this;notificationChannel();}
     /** Stops listening from the floating ball without going through the background-start rules. */
     static void stopFromUi(){
         OfflineListeningService s=instance;
-        if(s!=null)s.main.post(s::stopNow);
-        else{running=false;ready=false;SwipeAccessibilityService.listeningStateChanged();}
+        if(s!=null)s.main.post(()->s.stopNow("已停止聆聽"));
+        else{running=false;ready=false;paused=false;SwipeAccessibilityService.listeningStateChanged();}
     }
     @Override public int onStartCommand(Intent intent,int flags,int id){
         String action=intent==null?"":intent.getAction();
-        if(ACTION_STOP.equals(action)){stopNow();return START_NOT_STICKY;}
+        if(ACTION_STOP.equals(action)){stopNow("已停止聆聽");return START_NOT_STICKY;}
         if(!ACTION_START.equals(action)||running)return START_NOT_STICKY;
         if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
             update("請先授權麥克風");stopSelf();return START_NOT_STICKY;
@@ -52,8 +65,12 @@ public final class OfflineListeningService extends Service {
             update("前景服務無法啟動："+ex.getClass().getSimpleName());
             stopSelf();return START_NOT_STICKY;
         }
-        running=true;
-        final int ticket=++session;
+        running=true;gaveUp=false;paused=false;
+        retryBackoff.succeeded();
+        registerScreenReceiver();
+        final int run=++runId;
+        ++session;
+        if(model!=null){begin(session);return START_NOT_STICKY;}
         update("正在載入離線中文模型");
         new Thread(()->{
             Model loaded=null;
@@ -62,21 +79,22 @@ public final class OfflineListeningService extends Service {
                 loaded=new Model(folder.getAbsolutePath());
                 Model completed=loaded;
                 main.post(()->{
-                    if(!running||ticket!=session){completed.close();return;}
-                    model=completed;begin(ticket);
+                    if(!running||run!=runId){completed.close();return;}
+                    model=completed;
+                    if(!paused)begin(++session);
                 });
             }catch(Exception ex){
                 if(loaded!=null)loaded.close();
                 String reason=ex.getClass().getSimpleName()+": "+ex.getMessage();
                 main.post(()->{
-                    if(running&&ticket==session){stopNow();update("載入模型失敗："+reason);}
+                    if(running&&run==runId)stopNow("載入模型失敗："+reason);
                 });
             }
         },"load-model").start();
         return START_NOT_STICKY;
     }
     private void begin(int ticket){
-        if(!running||ticket!=session||model==null)return;
+        if(!running||paused||ticket!=session||model==null)return;
         try {
             boolean grammar=getSharedPreferences("state",MODE_PRIVATE).getBoolean(PREF_GRAMMAR,true);
             if(grammar){
@@ -106,20 +124,24 @@ public final class OfflineListeningService extends Service {
             if(!current())return;
             heartbeat();
             if(firedThisUtterance){firedThisUtterance=false;return;}
-            handle(field(result,"text"));
+            handle(field(result,"text"),false);
         }
         @Override public void onPartialResult(String result){
             if(!current())return;
             heartbeat();
             if(!actOnPartial||firedThisUtterance)return;
-            String partial=field(result,"partial");
-            if(CommandEngine.parse(partial)!=CommandEngine.NONE&&handle(partial))firedThisUtterance=true;
+            if(handle(field(result,"partial"),true))firedThisUtterance=true;
         }
-        private boolean handle(String heard){
-            final int command=commands.accept(heard,SystemClock.elapsedRealtime());
+        private boolean handle(String heard,boolean partial){
+            final int command=commands.accept(heard,SystemClock.elapsedRealtime(),partial);
             if(command==CommandEngine.NONE)return false;
             main.post(()->{
                 if(!current())return;
+                if(command==CommandEngine.HOME){
+                    boolean ok=SwipeAccessibilityService.goHome();
+                    stopNow(ok?"已回到首頁並停止聆聽":"回到首頁失敗（無障礙未啟用），已停止聆聽");
+                    return;
+                }
                 boolean next=command==CommandEngine.NEXT;
                 boolean ok=SwipeAccessibilityService.swipe(next);
                 update((next?"下一頁":"上一頁")+(ok?"：已送出手勢":"：無障礙手勢未成功"));
@@ -157,12 +179,61 @@ public final class OfflineListeningService extends Service {
         if(!running||ticket!=session)return;
         ++session;
         clearHealth();closeSpeech();
-        final int next=session;
         long wait=retryBackoff.failed();
+        if(retryBackoff.exhausted()){
+            gaveUp=true;
+            stopNow("麥克風連續 "+RestartPolicy.MAX_FAILURES+" 次啟動失敗，已停止。點浮球重試");
+            return;
+        }
+        final int next=session;
         update("重新啟動語音辨識中");
         pendingRetry=()->{pendingRetry=null;begin(next);};
         main.postDelayed(pendingRetry,wait);
     }
+
+    // ---- Screen off: pause the microphone; unlock: resume ----------------------------------
+    private void registerScreenReceiver(){
+        if(screenReceiver!=null)return;
+        screenReceiver=new BroadcastReceiver(){
+            @Override public void onReceive(Context c,Intent i){
+                String a=i.getAction();
+                if(Intent.ACTION_SCREEN_OFF.equals(a))pause();
+                else if(Intent.ACTION_USER_PRESENT.equals(a))resume();
+                else if(Intent.ACTION_SCREEN_ON.equals(a)){
+                    // Without a lock screen USER_PRESENT may never come; resume once unlocked.
+                    KeyguardManager k=(KeyguardManager)getSystemService(KEYGUARD_SERVICE);
+                    if(k==null||!k.isKeyguardLocked())resume();
+                }
+            }
+        };
+        IntentFilter f=new IntentFilter();
+        f.addAction(Intent.ACTION_SCREEN_OFF);
+        f.addAction(Intent.ACTION_SCREEN_ON);
+        f.addAction(Intent.ACTION_USER_PRESENT);
+        if(Build.VERSION.SDK_INT>=33)registerReceiver(screenReceiver,f,Context.RECEIVER_NOT_EXPORTED);
+        else registerReceiver(screenReceiver,f);
+    }
+    private void unregisterScreenReceiver(){
+        if(screenReceiver==null)return;
+        try{unregisterReceiver(screenReceiver);}catch(RuntimeException ignored){}
+        screenReceiver=null;
+    }
+    private void pause(){
+        if(!running||paused)return;
+        paused=true;++session;
+        if(pendingRetry!=null)main.removeCallbacks(pendingRetry);
+        pendingRetry=null;
+        clearHealth();closeSpeech();
+        update("螢幕關閉，已暫停聆聽（解鎖後自動恢復）");
+    }
+    private void resume(){
+        if(!running||!paused)return;
+        paused=false;
+        retryBackoff.succeeded();
+        if(model!=null)begin(++session);
+        else update("正在載入離線中文模型");
+    }
+
     private void clearHealth(){
         if(healthCheck!=null)main.removeCallbacks(healthCheck);
         healthCheck=null;
@@ -179,13 +250,14 @@ public final class OfflineListeningService extends Service {
             recognizer=null;
         }
     }
-    private void stopNow(){
-        running=false;++session;
+    private void stopNow(String reason){
+        running=false;paused=false;++session;++runId;
         if(pendingRetry!=null)main.removeCallbacks(pendingRetry);
         pendingRetry=null;
         clearHealth();closeSpeech();
+        unregisterScreenReceiver();
         if(model!=null){try{model.close();}catch(Exception ignored){}model=null;}
-        update("已停止聆聽");
+        update(reason);
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
     }
@@ -216,9 +288,10 @@ public final class OfflineListeningService extends Service {
             .addAction(android.R.drawable.ic_media_pause,"停止",stop).build();
     }
     @Override public void onDestroy(){
-        running=false;++session;
+        running=false;ready=false;paused=false;++session;++runId;
         if(pendingRetry!=null)main.removeCallbacks(pendingRetry);
         clearHealth();closeSpeech();
+        unregisterScreenReceiver();
         if(model!=null){try{model.close();}catch(Exception ignored){}model=null;}
         if(instance==this)instance=null;
         SwipeAccessibilityService.listeningStateChanged();

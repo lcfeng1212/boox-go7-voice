@@ -25,7 +25,7 @@ public final class MainActivity extends Activity {
         root.setBackgroundColor(Color.WHITE);
         scroller.addView(root);
         label(root,"BOOX 中文語音翻頁 V"+versionName(),24);
-        label(root,"離線中文語音：說「下一頁」、「上一頁」。",18);
+        label(root,"離線中文語音：說「下一頁」、「上一頁」翻頁，說「回到首頁」或「關閉」離開並停止聆聽。",18);
         status=label(root,"狀態載入中",16);
         CheckBox grammar=new CheckBox(this);
         grammar.setText("限定指令模式（建議：較準、較省電、反應較快）");
@@ -46,16 +46,31 @@ public final class MainActivity extends Activity {
             if(checked&&!SwipeAccessibilityService.isConnected())toast("浮球需要先啟用無障礙手勢服務");
         });
         root.addView(ball);
+        label(root,"翻頁方式（所有閱讀 App 共用）",16);
+        RadioGroup modes=new RadioGroup(this);
+        String[] names={"左右滑動（下一頁＝往左滑）","點擊左右兩側（下一頁＝點右側）","上下滑動（下一頁＝往上滑）"};
+        int[] values={GestureGeometry.SWIPE_HORIZONTAL,GestureGeometry.TAP_SIDES,GestureGeometry.SWIPE_VERTICAL};
+        int current=prefs().getInt(SwipeAccessibilityService.PREF_TURN_MODE,GestureGeometry.SWIPE_HORIZONTAL);
+        for(int i=0;i<names.length;i++){
+            RadioButton option=new RadioButton(this);
+            option.setId(1000+values[i]);
+            option.setText(names[i]);option.setTextSize(16);option.setTextColor(Color.BLACK);
+            modes.addView(option);
+            if(values[i]==current)option.setChecked(true);
+        }
+        modes.setOnCheckedChangeListener((group,id)->
+            prefs().edit().putInt(SwipeAccessibilityService.PREF_TURN_MODE,id-1000).apply());
+        root.addView(modes);
         button(root,"① 開啟無障礙設定",()->startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         button(root,"② 開始離線聆聽",this::begin);
         button(root,"停止聆聽",()->{
             Intent stop=new Intent(this,OfflineListeningService.class).setAction(OfflineListeningService.ACTION_STOP);
             startService(stop);refresh();
         });
-        button(root,"測試下一頁（左滑）",()->testSwipe(true));
-        button(root,"測試上一頁（右滑）",()->testSwipe(false));
-        label(root,"可用指令：下一頁、下頁、翻頁、翻下一頁、往下翻；上一頁、上頁、翻上一頁、往上翻。",15);
-        label(root,"先啟用 BOOX 語音翻頁手勢無障礙服務，再開始聆聽並允許麥克風權限。返回閱讀 App 後說下一頁或上一頁。通知列可停止。持續聆聽會增加耗電，BOOX 休眠可能中斷服務。若限定指令模式誤判或聽不到，可取消勾選改用一般模式比較。",15);
+        button(root,"測試下一頁",()->testSwipe(true));
+        button(root,"測試上一頁",()->testSwipe(false));
+        label(root,"可用指令：下一頁、下、左滑（下一頁）；上一頁、上、右滑（上一頁）；回到首頁、關閉（回到桌面並停止聆聽）。「下」「上」「回到首頁」「關閉」要單獨說，說完才會執行。",15);
+        label(root,"先啟用 BOOX 語音翻頁手勢無障礙服務，再開始聆聽並允許麥克風權限。返回閱讀 App 後說下一頁或上一頁。通知列可停止。螢幕關閉時自動暫停收音，解鎖後自動恢復。若限定指令模式誤判或聽不到，可取消勾選改用一般模式比較。",15);
         setContentView(scroller);
     }
     private TextView label(LinearLayout root,String text,int size){

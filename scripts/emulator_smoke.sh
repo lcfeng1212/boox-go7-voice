@@ -5,10 +5,19 @@
 set -euo pipefail
 
 PKG="tw.boox.voicepage"
-APK="$(find downloaded-apk -name app-debug.apk -print -quit)"
-test -n "$APK" || { echo "app-debug.apk not found"; exit 1; }
+APK="$(find downloaded-apk -name BOOX-Go7-VoicePage.apk -print -quit)"
+test -n "$APK" || { echo "BOOX-Go7-VoicePage.apk not found"; exit 1; }
 
-adb install -r "$APK"
+# The new APK must install over the currently published one (same key, or rotated lineage).
+PREV="$(mktemp -d)/prev.apk"
+if curl -fsSL -o "$PREV" "https://github.com/lcfeng1212/boox-go7-voice/releases/download/latest/BOOX-Go7-VoicePage.apk"; then
+  adb install "$PREV"
+  adb install -r "$APK"
+  echo "update over published release PASS"
+else
+  echo "no published release to update from"
+  adb install -r "$APK"
+fi
 adb shell am start -W -n "$PKG/.MainActivity"
 sleep 4
 adb shell pidof "$PKG"
@@ -57,11 +66,39 @@ echo "process capability: $CAP"
 case "$CAP" in *M*) ;; *) fail "service lacks microphone capability (would record silence)";; esac
 adb logcat -d -s BOOXVoice:I | grep "status:" | tail -n3 || true
 
-# Second tap stops it.
-adb shell input tap "$X" "$Y"
-for i in $(seq 1 10); do service_running || break; sleep 1; done
-service_running && fail "second ball tap did not stop listening"
-echo "ball toggle start/stop PASS"
+# Screen off pauses the microphone; unlocking resumes it (only when the emulator can record).
+status_seen(){ adb logcat -d -s BOOXVoice:I | grep "status:" | tail -n1 | grep -q "$1"; }
+for i in $(seq 1 90); do
+  status_seen "離線聆聽中" && break
+  adb logcat -d -s BOOXVoice:I | grep "status:" | tail -n1 | grep -qE "連續|失敗" && break
+  sleep 1
+done
+adb logcat -d -s BOOXVoice:I | grep "status:" | tail -n3 || true
+if status_seen "離線聆聽中"; then
+  adb shell input keyevent KEYCODE_SLEEP
+  for i in $(seq 1 10); do status_seen "已暫停聆聽" && break; sleep 1; done
+  status_seen "已暫停聆聽" || fail "screen off did not pause listening"
+  adb shell input keyevent KEYCODE_WAKEUP; sleep 1
+  adb shell wm dismiss-keyguard || true
+  for i in $(seq 1 20); do status_seen "離線聆聽中" && break; sleep 1; done
+  status_seen "離線聆聽中" || fail "unlock did not resume listening"
+  service_running || fail "service stopped during pause/resume"
+  echo "screen-off pause / unlock resume PASS"
+  adb shell input keyevent KEYCODE_HOME; sleep 1
+else
+  echo "::warning::emulator microphone did not start recognition; pause/resume test skipped"
+fi
+
+# Second tap stops it (unless listening already gave up because the emulator has no microphone).
+if service_running; then
+  adb shell input tap "$X" "$Y"
+  for i in $(seq 1 10); do service_running || break; sleep 1; done
+  service_running && fail "second ball tap did not stop listening"
+  echo "ball toggle start/stop PASS"
+else
+  status_seen "連續" || fail "listening stopped without a reason"
+  echo "::warning::listening gave up after repeated microphone failures (retry cap PASS); stop tap skipped"
+fi
 
 # Hold 5 seconds opens the app.
 adb shell input swipe "$X" "$Y" "$X" "$Y" 5600
