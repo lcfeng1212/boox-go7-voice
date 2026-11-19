@@ -66,7 +66,11 @@ public final class OfflineListeningService extends Service {
     }
     @Override public int onStartCommand(Intent intent,int flags,int id){
         String action=intent==null?"":intent.getAction();
-        if(ACTION_STOP.equals(action)){stopNow("已停止聆聽");return START_NOT_STICKY;}
+        if(ACTION_STOP.equals(action)){
+            // Not listening (e.g. it already gave up): just go away and keep the last status text.
+            if(running)stopNow("已停止聆聽");else stopSelf();
+            return START_NOT_STICKY;
+        }
         if(!ACTION_START.equals(action))return START_NOT_STICKY;
         // Every startForegroundService() must be answered with startForeground(), even when we
         // are about to stop again; otherwise Android treats it as a violation and may crash the app.
