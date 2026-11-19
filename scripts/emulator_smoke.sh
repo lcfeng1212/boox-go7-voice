@@ -48,9 +48,8 @@ fail(){
   if [ -n "$N" ]; then
     sed -n "$((N>60?N-60:1)),$((N+5))p" /tmp/full.log | grep -vE "PrefCtrlListHelper|SettingsSearchProvider|Cobalt|BugleRcs|netd" | cut -c1-230 || true
   fi
-  echo "--- Play Protect / verifier / settings writers"
-  grep -iE "finsky|playprotect|play protect|verif|harmful|phonesky|ecm|restricted|disableAccessibility|a11y|AccessibilityManager|SettingsProvider|secure.*access" /tmp/full.log \
-    | grep -vE "SingleHostAsyncVerifier|IntentFilterIntentOp|PrefCtrlListHelper|SettingsSearchProvider" | tail -60 | cut -c1-230 || true
+  echo "--- who changed accessibility settings (dumpsys settings history)"
+  adb shell dumpsys settings | grep -iE "accessibility_enabled|enabled_accessibility_services" | tail -20 | cut -c1-250 || true
   echo "--- app log"
   grep -E "BOOXVoice|tw\.boox|AndroidRuntime" /tmp/full.log | tail -40 | cut -c1-230 || true
   exit 1
