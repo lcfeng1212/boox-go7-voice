@@ -46,6 +46,23 @@ public final class CommandEngine {
             .replaceAll("[\\s\\p{Punct}，。！？、：；『』「」（）]+","")
             .replace('頁','页').replace('關','关').replace('閉','闭');
     }
+    /**
+     * Normalized text between leading and trailing unknown speech, or null when unknown speech
+     * sits inside the phrase ("左 [unk] 滑" is not 左滑).
+     */
+    static String core(String input){
+        if(input==null)return "";
+        String[] t=input.trim().split("\\s+");
+        int a=0,b=t.length;
+        while(a<b&&t[a].equals("[unk]"))a++;
+        while(b>a&&t[b-1].equals("[unk]"))b--;
+        StringBuilder kept=new StringBuilder();
+        for(int i=a;i<b;i++){
+            if(t[i].equals("[unk]"))return null;
+            kept.append(t[i]).append(' ');
+        }
+        return normalize(kept.toString());
+    }
     private static int lookup(String normalized){
         switch(normalized){
             case "下一页": case "左滑": case "下": return NEXT;
@@ -62,14 +79,16 @@ public final class CommandEngine {
     public static int parseFinal(String input){return parseFinal(input,false);}
     /** @param complete complete-command mode: reject any utterance that also has unknown speech. */
     public static int parseFinal(String input,boolean complete){
-        String s=normalize(input);
+        String s=core(input);
+        if(s==null)return NONE;
         int cmd=lookup(s);
         if(cmd!=NONE&&(complete||isStrict(s))&&input.contains("[unk]"))return NONE;
         return cmd;
     }
     /** Command in a partial (still speaking) result; strict commands never fire here. */
     public static int parsePartial(String input){
-        String s=normalize(input);
+        String s=core(input);
+        if(s==null)return NONE;
         return isStrict(s)?NONE:lookup(s);
     }
     public int accept(String input,long uptime,boolean partial) {return accept(input,uptime,partial,false);}

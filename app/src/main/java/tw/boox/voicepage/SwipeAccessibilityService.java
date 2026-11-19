@@ -57,6 +57,8 @@ public final class SwipeAccessibilityService extends AccessibilityService {
     @Override public void onInterrupt(){}
     @Override public boolean onUnbind(android.content.Intent intent){
         if(ball!=null)ball.hide();
+        // Without this service no command can act, so do not keep the microphone on.
+        if(OfflineListeningService.running)OfflineListeningService.stopFromUi("無障礙服務已關閉，已停止聆聽");
         return super.onUnbind(intent);
     }
     @Override public void onDestroy(){

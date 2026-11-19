@@ -58,9 +58,10 @@ public final class OfflineListeningService extends Service {
         completeMode=getSharedPreferences("state",MODE_PRIVATE).getBoolean(PREF_COMPLETE,false);
     }
     /** Stops listening from the floating ball without going through the background-start rules. */
-    static void stopFromUi(){
+    static void stopFromUi(){stopFromUi("已停止聆聽");}
+    static void stopFromUi(String reason){
         OfflineListeningService s=instance;
-        if(s!=null)s.main.post(()->s.stopNow("已停止聆聽"));
+        if(s!=null)s.main.post(()->{if(running)s.stopNow(reason);});
         else{running=false;ready=false;paused=false;SwipeAccessibilityService.listeningStateChanged();}
     }
     @Override public int onStartCommand(Intent intent,int flags,int id){

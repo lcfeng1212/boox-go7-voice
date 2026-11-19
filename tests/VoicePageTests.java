@@ -16,6 +16,11 @@ public final class VoicePageTests {
         check(CommandEngine.parsePartial("回到 首页")==0&&CommandEngine.parseFinal("回到 首页")==2);
         check(CommandEngine.parseFinal("回到首頁")==2&&CommandEngine.parseFinal("關閉")==2&&CommandEngine.parseFinal("关闭")==2);
         check(CommandEngine.parsePartial("关闭")==0&&CommandEngine.parseFinal("[unk] 关闭")==0);
+        // Unknown speech may surround a command but not sit inside it.
+        check(CommandEngine.parseFinal("左 [unk] 滑")==0&&CommandEngine.parsePartial("左 [unk] 滑")==0);
+        check(CommandEngine.parseFinal("上 [unk] 一页")==0&&CommandEngine.parseFinal("下一 [unk] 页")==0);
+        check(CommandEngine.parseFinal("[unk] 上 一页 [unk]")==-1&&CommandEngine.parsePartial("[unk] [unk] 右 滑")==-1);
+        check(CommandEngine.parseFinal("回到 [unk] 首页")==0);
         // Complete-command mode: every command waits for the final result and rejects unknown speech.
         check(CommandEngine.parseFinal("[unk] 下一页",true)==0&&CommandEngine.parseFinal("下一页 [unk]",true)==0);
         check(CommandEngine.parseFinal("下一页",true)==1&&CommandEngine.parseFinal("上",true)==-1&&CommandEngine.parseFinal("关闭",true)==2);

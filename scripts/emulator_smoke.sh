@@ -5,17 +5,28 @@
 set -euo pipefail
 
 PKG="tw.boox.voicepage"
-APK="$(find downloaded-apk -name BOOX-Go7-VoicePage.apk -print -quit)"
-test -n "$APK" || { echo "BOOX-Go7-VoicePage.apk not found"; exit 1; }
+RELEASE_APK="$(find downloaded-apk -name BOOX-Go7-VoicePage.apk -print -quit)"
+X86_APK="$(find downloaded-apk -name BOOX-Go7-VoicePage-x86_64-test.apk -print -quit)"
+test -n "$RELEASE_APK" || { echo "BOOX-Go7-VoicePage.apk not found"; exit 1; }
+# Prefer the exact published (arm64-only) APK when the emulator can translate ARM code;
+# otherwise test the x86_64 build of the same commit.
+ABIS="$(adb shell getprop ro.product.cpu.abilist | tr -d '\r')"
+echo "emulator ABIs: $ABIS"
+if echo "$ABIS" | grep -q "arm64-v8a"; then
+  APK="$RELEASE_APK"; echo "testing the published arm64 APK (ARM translation)"
+else
+  test -n "$X86_APK" || { echo "x86_64 test APK not found"; exit 1; }
+  APK="$X86_APK"; echo "testing the x86_64 build of the same commit"
+fi
 
 # The new APK must install over the currently published one (same key, or rotated lineage).
 PREV="$(mktemp -d)/prev.apk"
-if curl -fsSL -o "$PREV" "https://github.com/lcfeng1212/boox-go7-voice/releases/download/latest/BOOX-Go7-VoicePage.apk"; then
-  adb install "$PREV"
+if curl -fsSL -o "$PREV" "https://github.com/lcfeng1212/boox-go7-voice/releases/download/latest/BOOX-Go7-VoicePage.apk" \
+   && adb install "$PREV"; then
   adb install -r "$APK"
   echo "update over published release PASS"
 else
-  echo "no published release to update from"
+  echo "::warning::published release could not be downloaded or installed on this emulator; update test skipped"
   adb install -r "$APK"
 fi
 adb shell am start -W -n "$PKG/.MainActivity"
