@@ -42,7 +42,14 @@ fail(){
   echo "FAIL: $*"
   echo "--- enabled services: $(adb shell settings get secure enabled_accessibility_services)"
   adb shell dumpsys accessibility | grep -iE "boox|Bound services|Enabled services|installed|crash" | head -20 || true
-  adb logcat -d | grep -E "BOOXVoice|tw\.boox|ForegroundService|Background activity|AndroidRuntime|ccessibility" | tail -60 || true
+  adb logcat -d -v time > /tmp/full.log || true
+  echo "--- context before accessibility was turned off"
+  N="$(grep -n "accessibility changed to false\|enabled_accessibility_services" /tmp/full.log | tail -n1 | cut -d: -f1 || true)"
+  if [ -n "$N" ]; then
+    sed -n "$((N>60?N-60:1)),$((N+5))p" /tmp/full.log | grep -vE "PrefCtrlListHelper|SettingsSearchProvider|Cobalt|BugleRcs|netd" | cut -c1-230 || true
+  fi
+  echo "--- app log"
+  grep -E "BOOXVoice|tw\.boox|AndroidRuntime" /tmp/full.log | tail -40 | cut -c1-230 || true
   exit 1
 }
 
@@ -91,8 +98,7 @@ if status_seen "離線聆聽中"; then
   status_seen "離線聆聽中" || fail "unlock did not resume listening"
   sleep 3
   echo "a11y after unlock: $(adb shell settings get secure enabled_accessibility_services)"
-  adb logcat -d -v time | grep -vE "PrefCtrlListHelper|SettingsSearchProvider|Cobalt|BugleRcs|netd|getprop" \
-    | grep -iE -B2 -A2 "accessib|boox|keyguard|USER_PRESENT|screen_off|ScreenOff|uninstall|package" | tail -120 || true
+
   service_running || fail "service stopped during pause/resume"
   echo "screen-off pause / unlock resume PASS"
   adb shell input keyevent KEYCODE_HOME; sleep 1
