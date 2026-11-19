@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- No accessibilityEventTypes: the service never reads events, so it is not woken on every
+     window change. It only dispatches gestures, the home action and the floating ball overlay. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:notificationTimeout="100"
     android:canRetrieveWindowContent="false"
-    android:canPerformGestures="true"/>
+    android:canPerformGestures="true"
+    android:description="@string/accessibility_description"/>

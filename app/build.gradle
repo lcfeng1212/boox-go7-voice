@@ -6,8 +6,8 @@ android {
         applicationId 'tw.boox.voicepage'
         minSdk 28
         targetSdk 33
-        versionCode 7
-        versionName '0.5.1'
+        versionCode 8
+        versionName '0.5.2'
         // BOOX Go 7 (Snapdragon 690) is arm64; x86_64 is kept only for the CI emulator test.
         ndk { abiFilters 'arm64-v8a', 'x86_64' }
     }

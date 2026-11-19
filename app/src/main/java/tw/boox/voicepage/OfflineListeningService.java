@@ -66,15 +66,19 @@ public final class OfflineListeningService extends Service {
     @Override public int onStartCommand(Intent intent,int flags,int id){
         String action=intent==null?"":intent.getAction();
         if(ACTION_STOP.equals(action)){stopNow("已停止聆聽");return START_NOT_STICKY;}
-        if(!ACTION_START.equals(action)||running)return START_NOT_STICKY;
-        if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
-            update("請先授權麥克風");stopSelf();return START_NOT_STICKY;
-        }
-        lastNotice="正在載入語音模型";
+        if(!ACTION_START.equals(action))return START_NOT_STICKY;
+        // Every startForegroundService() must be answered with startForeground(), even when we
+        // are about to stop again; otherwise Android treats it as a violation and may crash the app.
+        if(!running)lastNotice="正在載入語音模型";
         try{startForeground(NOTICE,notification(lastNotice));}
         catch(RuntimeException ex){
             update("前景服務無法啟動："+ex.getClass().getSimpleName());
             stopSelf();return START_NOT_STICKY;
+        }
+        if(running)return START_NOT_STICKY;
+        if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
+            update("請先授權麥克風");
+            stopForeground(STOP_FOREGROUND_REMOVE);stopSelf();return START_NOT_STICKY;
         }
         running=true;gaveUp=false;paused=false;
         retryBackoff.succeeded();

@@ -94,8 +94,18 @@ public final class MainActivity extends Activity {
     }
     private void begin(){
         if(!SwipeAccessibilityService.isConnected()){toast("請先啟用無障礙手勢");return;}
-        if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
-            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},MIC_REQUEST);return;
+        // Android 13 needs the notification permission for the "listening / stop" notification.
+        // Asked once together with the microphone; listening still works if it is refused.
+        java.util.List<String> ask=new java.util.ArrayList<>();
+        if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED)
+            ask.add(Manifest.permission.RECORD_AUDIO);
+        if(Build.VERSION.SDK_INT>=33&&!prefs().getBoolean("asked_notifications",false)
+                &&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
+            ask.add(Manifest.permission.POST_NOTIFICATIONS);
+        if(!ask.isEmpty()){
+            if(ask.contains(Manifest.permission.POST_NOTIFICATIONS))
+                prefs().edit().putBoolean("asked_notifications",true).apply();
+            requestPermissions(ask.toArray(new String[0]),MIC_REQUEST);return;
         }
         Intent start=new Intent(this,OfflineListeningService.class).setAction(OfflineListeningService.ACTION_START);
         try{if(Build.VERSION.SDK_INT>=26)startForegroundService(start);else startService(start);}
@@ -104,7 +114,7 @@ public final class MainActivity extends Activity {
     @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] results){
         super.onRequestPermissionsResult(code,permissions,results);
         if(code==MIC_REQUEST){
-            if(results.length>0&&results[0]==PackageManager.PERMISSION_GRANTED)begin();
+            if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED)begin();
             else toast("尚未授予麥克風權限");
         }
     }
@@ -114,9 +124,16 @@ public final class MainActivity extends Activity {
         if(status==null)return;
         String detail=prefs().getString("status","尚未開始");
         String text="無障礙："+(SwipeAccessibilityService.isConnected()?"已啟用":"未啟用")+
-           "\n麥克風："+(OfflineListeningService.running?"運作中":"未執行")+"\n狀態："+detail;
+           "\n麥克風："+micState()+"\n狀態："+detail;
         // Only redraw when the text changes: every redraw costs an e-ink refresh.
         if(!text.contentEquals(status.getText()))status.setText(text);
+    }
+    private static String micState(){
+        if(OfflineListeningService.running){
+            if(OfflineListeningService.paused)return "已暫停（螢幕關閉）";
+            return OfflineListeningService.ready?"聆聽中":"載入中";
+        }
+        return OfflineListeningService.gaveUp?"已停止（連續失敗，請重試）":"未執行";
     }
     private SharedPreferences prefs(){return getSharedPreferences("state",MODE_PRIVATE);}
     private String versionName(){
