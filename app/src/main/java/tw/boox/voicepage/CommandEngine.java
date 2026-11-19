@@ -9,6 +9,8 @@ import java.util.Locale;
  *     but the command, because single characters and leave-the-app commands are easy to hear
  *     inside ordinary speech.</li>
  * </ul>
+ * In complete-command mode (optional) every command waits for the final result and is rejected
+ * when the utterance also contains unknown speech, trading a little speed for fewer false turns.
  */
 public final class CommandEngine {
     public static final int NONE=0, NEXT=1, PREVIOUS=-1, HOME=2;
@@ -57,10 +59,12 @@ public final class CommandEngine {
         return normalized.length()==1||lookup(normalized)==HOME;
     }
     /** Command in a final (end-of-speech) result. */
-    public static int parseFinal(String input){
+    public static int parseFinal(String input){return parseFinal(input,false);}
+    /** @param complete complete-command mode: reject any utterance that also has unknown speech. */
+    public static int parseFinal(String input,boolean complete){
         String s=normalize(input);
         int cmd=lookup(s);
-        if(cmd!=NONE&&isStrict(s)&&input.contains("[unk]"))return NONE;
+        if(cmd!=NONE&&(complete||isStrict(s))&&input.contains("[unk]"))return NONE;
         return cmd;
     }
     /** Command in a partial (still speaking) result; strict commands never fire here. */
@@ -68,8 +72,9 @@ public final class CommandEngine {
         String s=normalize(input);
         return isStrict(s)?NONE:lookup(s);
     }
-    public int accept(String input,long uptime,boolean partial) {
-        int cmd=partial?parsePartial(input):parseFinal(input);
+    public int accept(String input,long uptime,boolean partial) {return accept(input,uptime,partial,false);}
+    public int accept(String input,long uptime,boolean partial,boolean complete) {
+        int cmd=partial?(complete?NONE:parsePartial(input)):parseFinal(input,complete);
         if(cmd==NONE) return NONE;
         if(lastAt!=Long.MIN_VALUE && uptime>=lastAt && uptime-lastAt<intervalMs) return NONE;
         lastAt=uptime;

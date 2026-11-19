@@ -20,6 +20,11 @@ public final class OfflineListeningService extends Service {
     public static final String ACTION_START="tw.boox.voicepage.START_OFFLINE";
     public static final String ACTION_STOP="tw.boox.voicepage.STOP_OFFLINE";
     public static final String PREF_GRAMMAR="grammar_mode";
+    public static final String PREF_COMPLETE="complete_command_mode";
+    /** Complete-command mode, read on every result so the setting applies immediately. */
+    public static volatile boolean completeMode=false;
+    /** Consecutive-failure count resets only after this much uninterrupted listening. */
+    private static final long STABLE_MS=60000L;
     public static volatile boolean running=false;
     /** True once the recognizer is actually listening (false while loading, restarting or paused). */
     public static volatile boolean ready=false;
@@ -40,13 +45,18 @@ public final class OfflineListeningService extends Service {
     private SpeechService speech;
     private Runnable pendingRetry, healthCheck;
     /** Changes on every start/stop: invalidates a model load from an earlier run. */
-    private int runId=0;
+    private volatile int runId=0;
     /** Changes on every recognizer (re)start, pause and stop: invalidates stale callbacks. */
     private int session=0;
-    private boolean hadCallback;
+    private boolean stableReset;
+    private long listeningSince;
+    private String lastNotice;
     private BroadcastReceiver screenReceiver;
 
-    @Override public void onCreate(){super.onCreate();instance=this;notificationChannel();}
+    @Override public void onCreate(){
+        super.onCreate();instance=this;notificationChannel();
+        completeMode=getSharedPreferences("state",MODE_PRIVATE).getBoolean(PREF_COMPLETE,false);
+    }
     /** Stops listening from the floating ball without going through the background-start rules. */
     static void stopFromUi(){
         OfflineListeningService s=instance;
@@ -60,7 +70,8 @@ public final class OfflineListeningService extends Service {
         if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
             update("請先授權麥克風");stopSelf();return START_NOT_STICKY;
         }
-        try{startForeground(NOTICE,notification());}
+        lastNotice="正在載入語音模型";
+        try{startForeground(NOTICE,notification(lastNotice));}
         catch(RuntimeException ex){
             update("前景服務無法啟動："+ex.getClass().getSimpleName());
             stopSelf();return START_NOT_STICKY;
@@ -75,8 +86,16 @@ public final class OfflineListeningService extends Service {
         new Thread(()->{
             Model loaded=null;
             try {
-                File folder=ModelAssets.prepare(getApplicationContext());
-                loaded=new Model(folder.getAbsolutePath());
+                File folder=ModelAssets.prepare(getApplicationContext(),false);
+                if(run!=runId)return;   // stopped while extracting
+                try{loaded=new Model(folder.getAbsolutePath());}
+                catch(Exception first){
+                    // A damaged copy can pass the size check; extract once more and retry.
+                    Log.w("BOOXVoice","model load failed, re-extracting",first);
+                    folder=ModelAssets.prepare(getApplicationContext(),true);
+                    if(run!=runId)return;
+                    loaded=new Model(folder.getAbsolutePath());
+                }
                 Model completed=loaded;
                 main.post(()->{
                     if(!running||run!=runId){completed.close();return;}
@@ -106,7 +125,8 @@ public final class OfflineListeningService extends Service {
             if(recognizer==null)recognizer=new Recognizer(model,RATE);
             speech=new SpeechService(recognizer,RATE);
             if(!speech.startListening(new Receiver(ticket,grammar)))throw new IllegalStateException("startListening false");
-            hadCallback=false;
+            stableReset=false;
+            listeningSince=SystemClock.elapsedRealtime();
             ready=true;
             health.started(SystemClock.elapsedRealtime());
             scheduleHealth(ticket);
@@ -129,11 +149,11 @@ public final class OfflineListeningService extends Service {
         @Override public void onPartialResult(String result){
             if(!current())return;
             heartbeat();
-            if(!actOnPartial||firedThisUtterance)return;
+            if(!actOnPartial||completeMode||firedThisUtterance)return;
             if(handle(field(result,"partial"),true))firedThisUtterance=true;
         }
         private boolean handle(String heard,boolean partial){
-            final int command=commands.accept(heard,SystemClock.elapsedRealtime(),partial);
+            final int command=commands.accept(heard,SystemClock.elapsedRealtime(),partial,completeMode);
             if(command==CommandEngine.NONE)return false;
             main.post(()->{
                 if(!current())return;
@@ -160,8 +180,11 @@ public final class OfflineListeningService extends Service {
         catch(JSONException ignored){return "";}
     }
     private void heartbeat(){
-        health.heartbeat(SystemClock.elapsedRealtime());
-        if(!hadCallback){hadCallback=true;retryBackoff.succeeded();}
+        long now=SystemClock.elapsedRealtime();
+        health.heartbeat(now);
+        // Reset the failure count only after a stretch of stable listening, so a microphone that
+        // starts and then fails right away still reaches the retry limit.
+        if(!stableReset&&now-listeningSince>=STABLE_MS){stableReset=true;retryBackoff.succeeded();}
     }
     private void scheduleHealth(int ticket){
         clearHealth();
@@ -266,6 +289,19 @@ public final class OfflineListeningService extends Service {
         getSharedPreferences("state",MODE_PRIVATE).edit().putString("status",s).apply();
         Log.i("BOOXVoice","status: "+s);
         SwipeAccessibilityService.listeningStateChanged();
+        refreshNotice();
+    }
+    /** Keeps the ongoing notification in step with the state (only re-posted when its text changes). */
+    private void refreshNotice(){
+        if(!running)return;
+        String text=paused?"已暫停（螢幕關閉），解鎖後自動恢復"
+            :ready?"正在聆聽；按停止可結束":"正在載入或重新啟動語音辨識";
+        if(text.equals(lastNotice))return;
+        lastNotice=text;
+        NotificationManager manager=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);
+        if(manager!=null){
+            try{manager.notify(NOTICE,notification(text));}catch(RuntimeException ignored){}
+        }
     }
     private void notificationChannel(){
         if(Build.VERSION.SDK_INT>=26){
@@ -274,7 +310,7 @@ public final class OfflineListeningService extends Service {
                 new NotificationChannel(CHANNEL,"BOOX 離線語音翻頁",NotificationManager.IMPORTANCE_LOW));
         }
     }
-    private Notification notification(){
+    private Notification notification(String text){
         PendingIntent open=PendingIntent.getActivity(this,1,new Intent(this,MainActivity.class),
             PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
         PendingIntent stop=PendingIntent.getService(this,2,
@@ -284,7 +320,7 @@ public final class OfflineListeningService extends Service {
             ?new Notification.Builder(this,CHANNEL):new Notification.Builder(this);
         return b.setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle("BOOX 離線中文語音翻頁")
-            .setContentText("正在聆聽；按停止可結束")
+            .setContentText(text).setOnlyAlertOnce(true)
             .setContentIntent(open).setOngoing(true)
             .addAction(android.R.drawable.ic_media_pause,"停止",stop).build();
     }

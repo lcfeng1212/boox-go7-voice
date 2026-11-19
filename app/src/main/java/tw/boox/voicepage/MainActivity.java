@@ -36,6 +36,15 @@ public final class MainActivity extends Activity {
             if(OfflineListeningService.running)toast("已儲存，請按「停止聆聽」再重新開始才會生效");
         });
         root.addView(grammar);
+        CheckBox complete=new CheckBox(this);
+        complete.setText("完整口令模式（說完整句、句中沒有其他話才執行；較不易誤翻，反應稍慢）");
+        complete.setTextSize(16);complete.setTextColor(Color.BLACK);
+        complete.setChecked(prefs().getBoolean(OfflineListeningService.PREF_COMPLETE,false));
+        complete.setOnCheckedChangeListener((v,checked)->{
+            prefs().edit().putBoolean(OfflineListeningService.PREF_COMPLETE,checked).apply();
+            OfflineListeningService.completeMode=checked;   // applies immediately
+        });
+        root.addView(complete);
         CheckBox ball=new CheckBox(this);
         ball.setText("顯示浮球（點一下開／關聆聽；拖到左右邊緣收起；長按 5 秒開啟本 App）");
         ball.setTextSize(16);ball.setTextColor(Color.BLACK);

@@ -83,7 +83,7 @@ echo "process capability: $CAP"
 case "$CAP" in *M*) ;; *) fail "service lacks microphone capability (would record silence)";; esac
 adb logcat -d -s BOOXVoice:I | grep "status:" | tail -n3 || true
 
-# Screen off pauses the microphone; unlocking resumes it (only when the emulator can record).
+# Screen off pauses the microphone; unlocking resumes it. Mandatory: the emulator records silence.
 status_seen(){ adb logcat -d -s BOOXVoice:I | grep "status:" | tail -n1 | grep -q "$1"; }
 for i in $(seq 1 90); do
   status_seen "離線聆聽中" && break
@@ -95,6 +95,7 @@ if status_seen "離線聆聽中"; then
   adb shell input keyevent KEYCODE_SLEEP
   for i in $(seq 1 10); do status_seen "已暫停聆聽" && break; sleep 1; done
   status_seen "已暫停聆聽" || fail "screen off did not pause listening"
+  adb shell dumpsys notification --noredact | grep -q "已暫停" || fail "notification did not show the paused state"
   adb shell input keyevent KEYCODE_WAKEUP; sleep 1
   adb shell wm dismiss-keyguard || true
   for i in $(seq 1 20); do status_seen "離線聆聽中" && break; sleep 1; done
@@ -104,19 +105,15 @@ if status_seen "離線聆聽中"; then
   echo "screen-off pause / unlock resume PASS"
   adb shell input keyevent KEYCODE_HOME; sleep 1
 else
-  echo "::warning::emulator microphone did not start recognition; pause/resume test skipped"
+  fail "recognition never started, so the pause/resume test could not run"
 fi
 
-# Second tap stops it (unless listening already gave up because the emulator has no microphone).
-if service_running; then
-  adb shell input tap "$X" "$Y"
-  for i in $(seq 1 10); do service_running || break; sleep 1; done
-  service_running && fail "second ball tap did not stop listening"
-  echo "ball toggle start/stop PASS"
-else
-  status_seen "連續" || fail "listening stopped without a reason"
-  echo "::warning::listening gave up after repeated microphone failures (retry cap PASS); stop tap skipped"
-fi
+# Second tap stops it.
+service_running || fail "listening stopped by itself"
+adb shell input tap "$X" "$Y"
+for i in $(seq 1 10); do service_running || break; sleep 1; done
+service_running && fail "second ball tap did not stop listening"
+echo "ball toggle start/stop PASS"
 
 # Hold 5 seconds opens the app.
 adb shell input swipe "$X" "$Y" "$X" "$Y" 5600
