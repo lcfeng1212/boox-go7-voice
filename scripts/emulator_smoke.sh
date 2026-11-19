@@ -38,7 +38,13 @@ top_activity(){ adb shell dumpsys activity activities | grep -m1 -E "topResumedA
 # `|| true`: with pipefail, a grep that finds nothing would otherwise abort the script silently.
 ball_center(){ adb logcat -d -s BOOXVoiceBall:I | grep -o 'center=[0-9]*,[0-9]*' | tail -n1 | cut -d= -f2 || true; }
 last_ball_log(){ adb logcat -d -s BOOXVoiceBall:I | grep "center=" | tail -n1 || true; }
-fail(){ echo "FAIL: $*"; adb logcat -d | grep -iE "BOOXVoice|ForegroundService|Background activity|BAL|AndroidRuntime" | tail -60; exit 1; }
+fail(){
+  echo "FAIL: $*"
+  echo "--- enabled services: $(adb shell settings get secure enabled_accessibility_services)"
+  adb shell dumpsys accessibility | grep -iE "boox|Bound services|Enabled services|installed|crash" | head -20 || true
+  adb logcat -d | grep -E "BOOXVoice|tw\.boox|ForegroundService|Background activity|AndroidRuntime|ccessibility" | tail -60 || true
+  exit 1
+}
 
 adb shell pm grant "$PKG" android.permission.RECORD_AUDIO
 adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS || true
