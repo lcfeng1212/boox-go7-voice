@@ -26,7 +26,9 @@ echo "Android 13 install test PASS: APK installed, activity running, services re
 SVC="$PKG/.OfflineListeningService"
 service_running(){ adb shell dumpsys activity services "$SVC" | grep -q "ServiceRecord"; }
 top_activity(){ adb shell dumpsys activity activities | grep -m1 -E "topResumedActivity|mResumedActivity" || true; }
-ball_center(){ adb logcat -d -s BOOXVoiceBall:I | grep -o 'center=[0-9]*,[0-9]*' | tail -n1 | cut -d= -f2; }
+# `|| true`: with pipefail, a grep that finds nothing would otherwise abort the script silently.
+ball_center(){ adb logcat -d -s BOOXVoiceBall:I | grep -o 'center=[0-9]*,[0-9]*' | tail -n1 | cut -d= -f2 || true; }
+last_ball_log(){ adb logcat -d -s BOOXVoiceBall:I | grep "center=" | tail -n1 || true; }
 fail(){ echo "FAIL: $*"; adb logcat -d | grep -iE "BOOXVoice|ForegroundService|Background activity|BAL|AndroidRuntime" | tail -60; exit 1; }
 
 adb shell pm grant "$PKG" android.permission.RECORD_AUDIO
@@ -50,7 +52,7 @@ adb shell dumpsys activity services "$SVC" | grep -E "isForeground|foregroundSer
 sleep 2
 echo "top after start: $(top_activity)"
 top_activity | grep -q "$PKG" && fail "invisible start activity stayed on top"
-CAP="$(adb shell dumpsys activity processes "$PKG" | grep -oE "curCapability=[A-Z-]+" | head -n1)"
+CAP="$(adb shell dumpsys activity processes "$PKG" | grep -oE "curCapability=[A-Z-]+" | head -n1 || true)"
 echo "process capability: $CAP"
 case "$CAP" in *M*) ;; *) fail "service lacks microphone capability (would record silence)";; esac
 adb logcat -d -s BOOXVoice:I | grep "status:" | tail -n3 || true
@@ -69,12 +71,12 @@ echo "long press PASS"
 adb shell input keyevent KEYCODE_HOME; sleep 1
 
 # Drag to the right edge tucks the ball; tapping the tucked ball shows it again.
-W="$(adb shell wm size | grep -oE '[0-9]+x[0-9]+' | tail -n1 | cut -dx -f1)"
+W="$(adb shell wm size | grep -oE '[0-9]+x[0-9]+' | tail -n1 | cut -dx -f1 || true)"
 adb shell input swipe "$X" "$Y" "$((W-2))" "$((Y+150))" 900
 sleep 1
-adb logcat -d -s BOOXVoiceBall:I | grep "center=" | tail -n1 | grep -q "tucked=true" || fail "drag to edge did not tuck the ball"
+last_ball_log | grep -q "tucked=true" || fail "drag to edge did not tuck the ball"
 C="$(ball_center)"; adb shell input tap "${C%,*}" "${C#*,}"
 sleep 1
-adb logcat -d -s BOOXVoiceBall:I | grep "center=" | tail -n1 | grep -q "tucked=false" || fail "tap on tucked ball did not expand it"
+last_ball_log | grep -q "tucked=false" || fail "tap on tucked ball did not expand it"
 service_running && fail "tapping the tucked ball must not start listening"
 echo "Floating ball smoke test PASS: toggle from background, long press, tuck and expand"
