@@ -5,19 +5,8 @@
 set -euo pipefail
 
 PKG="tw.boox.voicepage"
-RELEASE_APK="$(find downloaded-apk -name BOOX-Go7-VoicePage.apk -print -quit)"
-X86_APK="$(find downloaded-apk -name BOOX-Go7-VoicePage-x86_64-test.apk -print -quit)"
-test -n "$RELEASE_APK" || { echo "BOOX-Go7-VoicePage.apk not found"; exit 1; }
-# Prefer the exact published (arm64-only) APK when the emulator can translate ARM code;
-# otherwise test the x86_64 build of the same commit.
-ABIS="$(adb shell getprop ro.product.cpu.abilist | tr -d '\r')"
-echo "emulator ABIs: $ABIS"
-if echo "$ABIS" | grep -q "arm64-v8a"; then
-  APK="$RELEASE_APK"; echo "testing the published arm64 APK (ARM translation)"
-else
-  test -n "$X86_APK" || { echo "x86_64 test APK not found"; exit 1; }
-  APK="$X86_APK"; echo "testing the x86_64 build of the same commit"
-fi
+APK="$(find downloaded-apk -name BOOX-Go7-VoicePage.apk -print -quit)"
+test -n "$APK" || { echo "BOOX-Go7-VoicePage.apk not found"; exit 1; }
 
 # The new APK must install over the currently published one (same key, or rotated lineage).
 PREV="$(mktemp -d)/prev.apk"

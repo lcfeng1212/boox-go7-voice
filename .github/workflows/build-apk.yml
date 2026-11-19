@@ -53,10 +53,7 @@ jobs:
         env:
           RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
-        run: |
-          bash scripts/sign_apk.sh app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk BOOX-Go7-VoicePage.apk
-          # Same commit, x86_64 only: used by the emulator test if it cannot translate ARM code. Never published.
-          bash scripts/sign_apk.sh app/build/outputs/apk/release/app-x86_64-release-unsigned.apk BOOX-Go7-VoicePage-x86_64-test.apk
+        run: bash scripts/sign_apk.sh app/build/outputs/apk/release/app-release-unsigned.apk BOOX-Go7-VoicePage.apk
       - name: Verify APK and model provenance
         run: |
           ls -lh BOOX-Go7-VoicePage.apk
@@ -64,8 +61,6 @@ jobs:
           cat model-source.json
           unzip -l BOOX-Go7-VoicePage.apk | grep 'assets/model-cn/am/final.mdl'
           unzip -l BOOX-Go7-VoicePage.apk | grep 'lib/arm64-v8a/libvosk.so'
-          if unzip -l BOOX-Go7-VoicePage.apk | grep -q 'lib/x86'; then echo "::error::published APK must be arm64 only"; exit 1; fi
-          ls -lh BOOX-Go7-VoicePage-x86_64-test.apk
       - name: Verify APK permissions (no network access)
         run: |
           AAPT2="${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools/35.0.0/aapt2"
@@ -80,7 +75,6 @@ jobs:
           if-no-files-found: error
           path: |
             BOOX-Go7-VoicePage.apk
-            BOOX-Go7-VoicePage-x86_64-test.apk
             model-source.json
 
   emulator-smoke:
