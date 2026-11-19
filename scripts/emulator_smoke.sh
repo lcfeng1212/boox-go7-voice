@@ -81,6 +81,7 @@ for i in $(seq 1 90); do
 done
 adb logcat -d -s BOOXVoice:I | grep "status:" | tail -n3 || true
 if status_seen "離線聆聽中"; then
+  echo "a11y before sleep: $(adb shell settings get secure enabled_accessibility_services)"
   adb shell input keyevent KEYCODE_SLEEP
   for i in $(seq 1 10); do status_seen "已暫停聆聽" && break; sleep 1; done
   status_seen "已暫停聆聽" || fail "screen off did not pause listening"
@@ -88,6 +89,10 @@ if status_seen "離線聆聽中"; then
   adb shell wm dismiss-keyguard || true
   for i in $(seq 1 20); do status_seen "離線聆聽中" && break; sleep 1; done
   status_seen "離線聆聽中" || fail "unlock did not resume listening"
+  sleep 3
+  echo "a11y after unlock: $(adb shell settings get secure enabled_accessibility_services)"
+  adb logcat -d -v time | grep -vE "PrefCtrlListHelper|SettingsSearchProvider|Cobalt|BugleRcs|netd|getprop" \
+    | grep -iE -B2 -A2 "accessib|boox|keyguard|USER_PRESENT|screen_off|ScreenOff|uninstall|package" | tail -120 || true
   service_running || fail "service stopped during pause/resume"
   echo "screen-off pause / unlock resume PASS"
   adb shell input keyevent KEYCODE_HOME; sleep 1

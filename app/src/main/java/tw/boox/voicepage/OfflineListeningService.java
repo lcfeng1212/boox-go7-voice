@@ -210,7 +210,8 @@ public final class OfflineListeningService extends Service {
         f.addAction(Intent.ACTION_SCREEN_OFF);
         f.addAction(Intent.ACTION_SCREEN_ON);
         f.addAction(Intent.ACTION_USER_PRESENT);
-        if(Build.VERSION.SDK_INT>=33)registerReceiver(screenReceiver,f,Context.RECEIVER_NOT_EXPORTED);
+        // USER_PRESENT is sent by SystemUI, not the system uid, so the receiver must be exported.
+        if(Build.VERSION.SDK_INT>=33)registerReceiver(screenReceiver,f,Context.RECEIVER_EXPORTED);
         else registerReceiver(screenReceiver,f);
     }
     private void unregisterScreenReceiver(){
