@@ -20,6 +20,7 @@ import android.view.WindowManager;
  * Floating microphone ball drawn as an accessibility overlay (no "draw over other apps" permission).
  * Tap: start/stop listening. Drag to a side edge: tuck away; tap the tucked ball to show it again.
  * Hold 5 seconds: open the app. Black = listening, grey = loading/paused, white = off,
+ * always with an outer white ring and inner black ring so it shows on light and dark pages;
  * white with 「重試」 = stopped after repeated microphone failures (tap to retry).
  */
 final class FloatingBall {
@@ -219,11 +220,15 @@ final class FloatingBall {
             float s=size, r=s/2f;
             // When tucked, the circle extends past the window edge facing the screen border.
             float cx=tucked?(side==BallLayout.LEFT?getWidth()-r:r):r, cy=getHeight()/2f;
-            float border=s*.06f;
+            // Double outline: an outer white ring and an inner black ring, so the ball stays visible
+            // on light pages and on dark (night mode) pages alike.
+            float ring=s*.05f;
             fill.setStyle(Paint.Style.FILL);fill.setColor(bg);
-            canvas.drawCircle(cx,cy,r-border/2f,fill);
-            stroke.setColor(Color.BLACK);stroke.setStrokeWidth(border);
-            canvas.drawCircle(cx,cy,r-border/2f,stroke);
+            canvas.drawCircle(cx,cy,r-ring*1.5f,fill);
+            stroke.setColor(Color.WHITE);stroke.setStrokeWidth(ring);
+            canvas.drawCircle(cx,cy,r-ring/2f,stroke);
+            stroke.setColor(Color.BLACK);stroke.setStrokeWidth(ring);
+            canvas.drawCircle(cx,cy,r-ring*1.5f,stroke);
             if(tucked)return;
             if(state==RETRY){
                 fill.setColor(Color.BLACK);

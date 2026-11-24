@@ -68,6 +68,8 @@ for i in $(seq 1 30); do C="$(ball_center)"; [ -n "$C" ] && break; sleep 1; done
 [ -n "$C" ] || fail "floating ball not shown after enabling accessibility service"
 X="${C%,*}"; Y="${C#*,}"
 echo "ball center: $X,$Y"
+mkdir -p screenshots
+shot(){ adb exec-out screencap -p > "screenshots/$1.png" || true; }
 
 # Tap from the home screen (app in background) must start the microphone service.
 adb shell input keyevent KEYCODE_HOME; sleep 2
@@ -108,12 +110,26 @@ else
   fail "recognition never started, so the pause/resume test could not run"
 fi
 
+# Screenshots of the listening (black) ball on a light and on a dark (night mode) screen.
+adb shell cmd uimode night no >/dev/null 2>&1 || true
+adb shell am start -W -a android.settings.SETTINGS >/dev/null 2>&1 || true
+sleep 3; shot "listening-light"
+adb shell cmd uimode night yes >/dev/null 2>&1 || true
+sleep 4; shot "listening-dark"
+adb shell cmd uimode night no >/dev/null 2>&1 || true
+adb shell input keyevent KEYCODE_HOME; sleep 2
+
 # Second tap stops it.
 service_running || fail "listening stopped by itself"
 adb shell input tap "$X" "$Y"
 for i in $(seq 1 10); do service_running || break; sleep 1; done
 service_running && fail "second ball tap did not stop listening"
 echo "ball toggle start/stop PASS"
+adb shell cmd uimode night yes >/dev/null 2>&1 || true
+adb shell am start -W -a android.settings.SETTINGS >/dev/null 2>&1 || true
+sleep 4; shot "off-dark"
+adb shell cmd uimode night no >/dev/null 2>&1 || true
+adb shell input keyevent KEYCODE_HOME; sleep 2
 
 # Hold 5 seconds opens the app.
 adb shell input swipe "$X" "$Y" "$X" "$Y" 5600
@@ -127,6 +143,7 @@ W="$(adb shell wm size | grep -oE '[0-9]+x[0-9]+' | tail -n1 | cut -dx -f1 || tr
 adb shell input swipe "$X" "$Y" "$((W-2))" "$((Y+150))" 900
 sleep 1
 last_ball_log | grep -q "tucked=true" || fail "drag to edge did not tuck the ball"
+shot "tucked-home"
 C="$(ball_center)"; adb shell input tap "${C%,*}" "${C#*,}"
 sleep 1
 last_ball_log | grep -q "tucked=false" || fail "tap on tucked ball did not expand it"

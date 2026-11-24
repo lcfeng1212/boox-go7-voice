@@ -107,6 +107,13 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
           script: bash scripts/emulator_smoke.sh
+      - name: Upload emulator screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: emulator-screenshots
+          path: screenshots/*.png
+          if-no-files-found: ignore
 
   # Publish the tested APK as a fixed-URL download (no GitHub login, no ZIP) for the e-reader.
   release:
